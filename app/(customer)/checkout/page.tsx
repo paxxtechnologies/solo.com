@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useCart } from "@/context/cart-context";
-import { useAuth } from "@/context/auth-context";
+import { useAuth } from '@/store/auth.store'
 import { useToast } from "@/context/toast-context";
 import { SoloLogo } from "@/components/ui/SoloLogo";
 import Link from "next/link";
@@ -74,8 +74,8 @@ export default function CheckoutPage() {
   // Form state
   const [formData, setFormData] = useState({
     email: user?.email || "",
-    firstName: user?.name?.split(" ")[0] || "",
-    lastName: user?.name?.split(" ")[1] || "",
+    firstName: user?.firstName || "",
+    lastName: user?.lastName || "",
     phone: "",
     address: "",
     apartment: "",

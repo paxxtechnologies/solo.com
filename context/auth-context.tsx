@@ -1,5 +1,6 @@
 'use client'
 
+// context/auth-context.tsx
 import React, { createContext, useContext, useReducer, useEffect, ReactNode } from 'react'
 
 export interface User {

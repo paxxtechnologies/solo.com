@@ -6,7 +6,8 @@ import { usePathname } from 'next/navigation'
 import { SoloLogo } from '@/components/ui/SoloLogo'
 import { useCart } from '@/context/cart-context'
 import { useWishlist } from '@/context/wishlist-context'
-import { useAuth } from '@/context/auth-context'
+import { useAuth } from '@/store/auth.store';
+import { useLogout } from '@/hooks/auth/useLogout';
 import {
   Search,
   Heart,
@@ -37,7 +38,8 @@ export function Navbar() {
   const pathname = usePathname()
   const { itemCount, openCart } = useCart()
   const { itemCount: wishlistCount } = useWishlist()
-  const { user, isAuthenticated, logout } = useAuth()
+  const { user, isAuthenticated } = useAuth()
+  const { mutate: logoutUser } = useLogout();
 
   const [searchQuery, setSearchQuery] = useState('')
   const [searchResults, setSearchResults] = useState<typeof products>([])
@@ -247,8 +249,9 @@ export function Navbar() {
                     </Link>
                     <button
                       onClick={() => {
-                        logout()
-                        setIsUserMenuOpen(false)
+                        logoutUser(undefined, {
+                          onSettled: () => setIsUserMenuOpen(false),
+                        });
                       }}
                       className="w-full text-left px-4 py-3 text-[14px] text-solo-red hover:bg-solo-soft-gray transition-colors"
                     >

@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { useAuth } from "@/context/auth-context";
+import { useAuth } from '@/store/auth.store'
 import { useToast } from "@/context/toast-context";
 import {
   User,
@@ -15,14 +15,14 @@ import {
 } from "lucide-react";
 
 export default function SettingsPage() {
-  const { user, updateUser } = useAuth();
+  const { user } = useAuth();
   const { showToast } = useToast();
 
   // Profile form state
   const [profileData, setProfileData] = useState({
-    name: user?.name || "",
+    name: `${user?.firstName} ${user?.lastName}` || "",
     email: user?.email || "",
-    phone: user?.phone || "",
+    phone: user?.phoneNumber || "",
   });
   const [isEditingProfile, setIsEditingProfile] = useState(false);
 
@@ -49,7 +49,7 @@ export default function SettingsPage() {
 
   const handleProfileSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    updateUser(profileData);
+    // updateUser(profileData);
     setIsEditingProfile(false);
     showToast("Profile updated successfully", "success");
   };
@@ -185,9 +185,9 @@ export default function SettingsPage() {
                 onClick={() => {
                   setIsEditingProfile(false);
                   setProfileData({
-                    name: user?.name || "",
+                    name: `${user?.firstName} ${user?.lastName}` || "",
                     email: user?.email || "",
-                    phone: user?.phone || "",
+                    phone: user?.phoneNumber || "",
                   });
                 }}
                 className="px-6 py-2 border border-border text-foreground font-medium rounded-lg hover:bg-surface-alt transition-colors"

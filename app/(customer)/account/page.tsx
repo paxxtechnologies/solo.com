@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useAuth } from "@/context/auth-context";
+import { useAuth } from '@/store/auth.store'
 import { useWishlist } from "@/context/wishlist-context";
 import {
   Package,
@@ -105,7 +105,7 @@ export default function AccountDashboard() {
       {/* Welcome Card */}
       <div className="bg-gradient-to-r from-primary to-primary-dark rounded-xl p-6 text-white">
         <h2 className="text-2xl font-heading font-bold mb-2">
-          Hello, {user?.name?.split(" ")[0]}!
+          Hello, {user?.firstName}!
         </h2>
         <p className="text-white/80">
           From your account dashboard you can view your recent orders, manage
@@ -232,7 +232,7 @@ export default function AccountDashboard() {
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div>
             <p className="text-sm text-muted mb-1">Full Name</p>
-            <p className="font-medium text-foreground">{user?.name}</p>
+            <p className="font-medium text-foreground">`${user?.firstName} ${user?.lastName}`</p>
           </div>
           <div>
             <p className="text-sm text-muted mb-1">Email Address</p>
@@ -241,7 +241,7 @@ export default function AccountDashboard() {
           <div>
             <p className="text-sm text-muted mb-1">Phone Number</p>
             <p className="font-medium text-foreground">
-              {user?.phone || "Not provided"}
+              {user?.phoneNumber || "Not provided"}
             </p>
           </div>
           <div>
