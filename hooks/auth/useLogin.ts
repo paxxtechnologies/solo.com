@@ -14,8 +14,14 @@ export function useLogin() {
 
         onSuccess: async () => {
             const profileRes = await authService.getMe();
-            setUser(profileRes.data.data);
-            router.push('/account');
+            const user = profileRes.data.data;
+            setUser(user);
+
+            if (user.isAdmin || user.role === 'admin') {
+                router.push('/admin');
+            } else {
+                router.push('/account');
+            }
         },
     });
 }

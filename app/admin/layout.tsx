@@ -4,6 +4,8 @@ import { useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { SoloLogo } from "@/components/ui/SoloLogo";
+import { useAuth } from '@/store/auth.store';
+import { useLogout } from '@/hooks/auth/useLogout';
 import {
   LayoutDashboard,
   Package,
@@ -42,8 +44,10 @@ export default function AdminLayout({
   const pathname = usePathname();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
+  const { user } = useAuth();
+    const { mutate: logoutUser } = useLogout();
 
-  return (
+    return (
     <div className="min-h-screen bg-solo-soft-gray font-sans selection:bg-solo-green/30 selection:text-solo-deep-navy">
       {/* Mobile Sidebar Overlay */}
       {sidebarOpen && (
@@ -164,11 +168,17 @@ export default function AdminLayout({
                 className="flex items-center gap-3 p-1.5 pr-3 hover:bg-solo-soft-gray rounded-full transition-all duration-300"
               >
                 <div className="w-9 h-9 rounded-full bg-gradient-to-tr from-solo-navy to-solo-green flex items-center justify-center shadow-md pb-0.5">
-                  <span className="text-white font-bold text-sm">G</span>
+                  <span className="text-white font-bold text-sm">
+                        {user?.firstName?.charAt(0) ?? 'A'}
+                    </span>
                 </div>
                 <div className="hidden sm:flex flex-col items-start leading-tight">
-                  <span className="font-bold text-sm text-solo-navy">Gil Admin</span>
-                  <span className="text-[10px] text-solo-muted font-semibold uppercase">Superuser</span>
+                  <span className="font-bold text-sm text-solo-navy">
+                        {user?.firstName} {user?.lastName}
+                    </span>
+                    <span className="text-[10px] text-solo-muted font-semibold uppercase">
+                        {user?.role ?? 'Admin'}
+                    </span>
                 </div>
                 <ChevronDown className="w-4 h-4 text-solo-muted hidden sm:block" />
               </button>
@@ -181,8 +191,10 @@ export default function AdminLayout({
                   />
                   <div className="absolute right-0 mt-3 w-56 bg-white border border-solo-muted/10 rounded-2xl shadow-xl z-50 py-2 animate-in fade-in slide-in-from-top-2 duration-200 overflow-hidden">
                     <div className="px-4 py-3 border-b border-solo-muted/10 mb-2">
-                      <p className="font-bold text-sm text-solo-navy">Gil Admin</p>
-                      <p className="text-xs text-solo-muted">admin@solostore.com</p>
+                        <p className="font-bold text-sm text-solo-navy">
+                            {user?.firstName} {user?.lastName}
+                        </p>
+                        <p className="text-xs text-solo-muted">{user?.email}</p>
                     </div>
                     <Link
                       href="/admin/settings"
@@ -191,13 +203,16 @@ export default function AdminLayout({
                     >
                       <Settings className="w-4 h-4" /> Account Settings
                     </Link>
-                    <Link
-                      href="/"
-                      className="flex items-center gap-2 px-4 py-2 hover:bg-solo-red/10 text-solo-red font-medium text-sm mx-2 rounded-lg transition-colors mt-1"
-                      onClick={() => setUserMenuOpen(false)}
-                    >
-                      <LogOut className="w-4 h-4" /> Sign Out securely
-                    </Link>
+                      <button
+                          onClick={() => {
+                              logoutUser(undefined, {
+                                  onSettled: () => setUserMenuOpen(false),
+                              });
+                          }}
+                          className="flex items-center gap-2 px-4 py-2 hover:bg-solo-red/10 text-solo-red font-medium text-sm mx-2 rounded-lg transition-colors mt-1 w-full text-left"
+                      >
+                          <LogOut className="w-4 h-4" /> Sign Out securely
+                      </button>
                   </div>
                 </>
               )}
