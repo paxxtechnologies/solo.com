@@ -37,7 +37,7 @@ export function AnnouncementBar() {
   if (isDismissed) return null
 
   return (
-    <div className="bg-solo-green h-9 flex items-center justify-center relative">
+      <div className="bg-solo-green h-9 hidden md:flex items-center justify-center relative">
       <p
         className={`text-[13px] font-medium text-solo-deep-green text-center px-8 transition-opacity duration-300 ${
           isVisible ? 'opacity-100' : 'opacity-0'
