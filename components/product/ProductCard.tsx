@@ -85,6 +85,7 @@ export function ProductCard({ product }: ProductCardProps) {
         />
 
         {/* Badge Strip */}
+        {/* TODO: no API for Solo Verified / Best Seller / New Arrival badges yet */}
         <div className="absolute top-2 left-2 flex flex-col gap-1">
           {displayBadges.includes('verified') && (
             <span className="bg-solo-green text-solo-deep-green text-[10px] font-semibold rounded-pill px-2 py-0.5">
@@ -130,6 +131,7 @@ export function ProductCard({ product }: ProductCardProps) {
         </h3>
 
         {/* BNPL Callout */}
+        {/* TODO: no API for Tendr BNPL monthly pricing yet */}
         {bnplMonthly > 0 && (
           <div className="mb-1.5">
             <span className="bg-solo-mint text-solo-deep-green text-[11px] font-medium rounded-pill px-2 py-0.5 inline-block">

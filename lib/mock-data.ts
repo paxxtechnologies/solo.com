@@ -19,7 +19,7 @@ export interface Product {
   specifications?: { key: string; value: string }[]
   variants?: {
     name: string
-    options: { value: string; priceOverride?: number; stock: number }[]
+    options: { id?: string; value: string; priceOverride?: number; stock: number }[]
   }[]
 }
 

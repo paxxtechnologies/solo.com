@@ -1,9 +1,11 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { Zap } from "lucide-react";
 import { ProductCard } from "@/components/product/ProductCard";
 import { products } from "@/lib/mock-data";
+import { publicProductsService } from "@/services/products.service";
 
 const categories = ["All", "Smartphones", "Laptops", "Accessories", "Audio"];
 
@@ -18,19 +20,25 @@ export default function FlashDealsPage() {
   const [activeCategory, setActiveCategory] = useState("All");
   const [timeLeft, setTimeLeft] = useState({ hours: 0, minutes: 0, seconds: 0 });
   const [dealEnded, setDealEnded] = useState(false);
+  const activeDealsQuery = useQuery({
+    queryKey: ["flash-deals-active"],
+    queryFn: () => publicProductsService.activeFlashDeals({ Limit: 24, Offset: 0 }),
+  });
 
   // Get flash deal products
-  const flashProducts = products.filter((p) => p.badges?.includes("flash"));
+  const flashProducts = activeDealsQuery.data?.items ?? [];
   const filteredProducts = activeCategory === "All"
     ? flashProducts
     : flashProducts.filter((p) => p.category.toLowerCase() === activeCategory.toLowerCase());
 
+  // TODO: no API for Recently Ended Deals section yet
   // Ended deals (mock - products without flash badge but with sale price)
   const endedDeals = products
     .filter((p) => p.salePrice && !p.badges?.includes("flash"))
     .slice(0, 4);
 
   useEffect(() => {
+    // TODO: no API for flash-deal countdown timer yet
     const endTime = getDealEndTime();
 
     const calculateTimeLeft = () => {

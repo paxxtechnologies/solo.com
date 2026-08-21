@@ -2,8 +2,9 @@
 
 import { useState } from 'react'
 import Link from 'next/link'
+import { useQuery } from '@tanstack/react-query'
 import { ProductCard } from '@/components/product/ProductCard'
-import { products } from '@/lib/mock-data'
+import { publicProductsService } from '@/services/products.service'
 
 const tabs = [
   { id: 'all', name: 'All' },
@@ -15,11 +16,15 @@ const tabs = [
 export function FeaturedProducts() {
   const [activeTab, setActiveTab] = useState('all')
 
-  // Filter products based on active tab
-  const filteredProducts =
-    activeTab === 'all'
-      ? products.slice(0, 8)
-      : products.filter((p) => p.category === activeTab).slice(0, 8)
+  const productsQuery = useQuery({
+    queryKey: ['home-latest-arrivals', activeTab],
+    queryFn: () =>
+      activeTab === 'all'
+        ? publicProductsService.list({ Limit: 8 })
+        : publicProductsService.byCategory(activeTab, { limit: 8, offset: 0 }),
+  })
+
+  const filteredProducts = productsQuery.data?.items ?? []
 
   return (
     <section className="py-16 max-md:py-12 bg-solo-soft-gray">

@@ -1,14 +1,17 @@
 'use client'
 
 import Link from 'next/link'
+import { useQuery } from '@tanstack/react-query'
 import { ProductCard } from '@/components/product/ProductCard'
-import { products } from '@/lib/mock-data'
+import { publicProductsService } from '@/services/products.service'
 
 export function BestSellers() {
-  // Filter products that have bestseller badge
-  const bestSellers = products
-    .filter((p) => p.badges.includes('bestseller') || p.reviewCount > 50)
-    .slice(0, 8)
+  const bestSellersQuery = useQuery({
+    queryKey: ['home-best-sellers'],
+    queryFn: () => publicProductsService.list({ Limit: 8 }),
+  })
+
+  const bestSellers = bestSellersQuery.data?.items ?? []
 
   return (
     <section className="py-16 max-md:py-12">
@@ -20,6 +23,7 @@ export function BestSellers() {
         </div>
 
         {/* Products Grid */}
+        {/* TODO: no confirmed API SortBy value for popularity-based Best Sellers yet */}
         <div className="grid grid-cols-4 max-lg:grid-cols-3 max-md:grid-cols-2 gap-4">
           {bestSellers.map((product) => (
             <ProductCard key={product.id} product={product} />

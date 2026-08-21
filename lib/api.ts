@@ -19,11 +19,7 @@ api.interceptors.request.use(
 api.interceptors.response.use(
     (response: AxiosResponse) => response,
     (error: AxiosError<ApiErrorResponse>) => {
-        const message =
-            error.response?.data?.errors?.[0] ??
-            error.response?.data?.message ??
-            'Something went wrong';
-        return Promise.reject(new Error(message));
+        return Promise.reject(ApiRequestError.fromAxiosError(error));
     }
 );
 
@@ -35,4 +31,30 @@ export interface ApiErrorResponse {
     statusCode: number;
     message: string;
     errors: string[] | null;
+    data?: unknown;
+}
+
+export class ApiRequestError extends Error {
+    statusCode?: number;
+    errors: string[] | null;
+    data: unknown;
+
+    constructor(message: string, response?: ApiErrorResponse) {
+        super(message);
+        this.name = 'ApiRequestError';
+        this.statusCode = response?.statusCode;
+        this.errors = response?.errors ?? null;
+        this.data = response?.data;
+    }
+
+    static fromAxiosError(error: AxiosError<ApiErrorResponse>) {
+        const response = error.response?.data;
+        const message =
+            response?.errors?.[0] ??
+            response?.message ??
+            error.message ??
+            'Something went wrong';
+
+        return new ApiRequestError(message, response);
+    }
 }

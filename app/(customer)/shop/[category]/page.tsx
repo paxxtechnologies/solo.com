@@ -1,10 +1,16 @@
 'use client'
 
-import { useState, useEffect } from 'react'
-import { useParams, useRouter, useSearchParams } from 'next/navigation'
+import { useState } from 'react'
+import { useParams } from 'next/navigation'
 import Link from 'next/link'
+import { useQuery } from '@tanstack/react-query'
 import { ProductCard } from '@/components/product/ProductCard'
-import { products, categories } from '@/lib/mock-data'
+import { categories } from '@/lib/mock-data'
+import {
+  publicProductsService,
+  publicProductSort,
+} from '@/services/products.service'
+import type { ProductSortOption } from '@/types/product.types'
 import {
   ChevronDown,
   ChevronUp,
@@ -25,8 +31,6 @@ const brands = ['Apple', 'Samsung', 'Tecno', 'Infinix', 'HP', 'Lenovo', 'JBL']
 
 export default function CategoryPage() {
   const params = useParams()
-  const router = useRouter()
-  const searchParams = useSearchParams()
 
   const categorySlug = params.category as string
   const category = categories.find((c) => c.slug === categorySlug)
@@ -54,66 +58,55 @@ export default function CategoryPage() {
   // Current page
   const [currentPage, setCurrentPage] = useState(1)
   const itemsPerPage = 24
+  const offset = (currentPage - 1) * itemsPerPage
 
-  // Apply filters
-  let filteredProducts = products.filter((p) =>
-    categorySlug === 'all' ? true : p.category === categorySlug
-  )
+  const sortByApi: ProductSortOption | undefined =
+    sortBy === 'featured'
+      ? publicProductSort.featured
+      : sortBy === 'price-asc'
+        ? publicProductSort.priceAsc
+        : sortBy === 'price-desc'
+          ? publicProductSort.priceDesc
+          : sortBy === 'newest'
+            ? publicProductSort.newest
+            : undefined
 
-  // Brand filter
-  if (selectedBrands.length > 0) {
-    filteredProducts = filteredProducts.filter((p) =>
-      selectedBrands.includes(p.brand)
-    )
-  }
-
-  // Price filter
-  if (minPrice) {
-    filteredProducts = filteredProducts.filter(
-      (p) => p.price >= parseInt(minPrice)
-    )
-  }
-  if (maxPrice) {
-    filteredProducts = filteredProducts.filter(
-      (p) => p.price <= parseInt(maxPrice)
-    )
-  }
-
-  // Availability filter
-  if (availability === 'in-stock') {
-    filteredProducts = filteredProducts.filter((p) => p.stockQty > 0)
-  }
-
-  // BNPL filter
-  if (paymentOptions.includes('bnpl')) {
-    filteredProducts = filteredProducts.filter((p) => p.isBnplEligible)
-  }
-
-  // Rating filter
-  if (minRating !== 'all') {
-    filteredProducts = filteredProducts.filter(
-      (p) => p.rating >= parseInt(minRating)
-    )
-  }
-
-  // Sort
-  if (sortBy === 'price-asc') {
-    filteredProducts.sort((a, b) => a.price - b.price)
-  } else if (sortBy === 'price-desc') {
-    filteredProducts.sort((a, b) => b.price - a.price)
-  } else if (sortBy === 'rating') {
-    filteredProducts.sort((a, b) => b.rating - a.rating)
-  } else if (sortBy === 'best-selling') {
-    filteredProducts.sort((a, b) => b.reviewCount - a.reviewCount)
-  }
+  const productsQuery = useQuery({
+    queryKey: [
+      'shop-products',
+      categorySlug,
+      minPrice,
+      maxPrice,
+      selectedBrands,
+      availability,
+      minRating,
+      sortByApi,
+      itemsPerPage,
+      offset,
+    ],
+    queryFn: () =>
+      categorySlug === 'all'
+        ? publicProductsService.list({
+            Brand: selectedBrands.length === 1 ? selectedBrands[0] : undefined,
+            MinPrice: minPrice ? parseInt(minPrice) : undefined,
+            MaxPrice: maxPrice ? parseInt(maxPrice) : undefined,
+            InStock: availability === 'in-stock' ? true : undefined,
+            Rating: minRating !== 'all' ? parseInt(minRating) : undefined,
+            SortBy: sortByApi,
+            Limit: itemsPerPage,
+            Offset: offset,
+          })
+        : publicProductsService.byCategory(categorySlug, {
+            limit: itemsPerPage,
+            offset,
+          }),
+  })
 
   // Pagination
-  const totalPages = Math.ceil(filteredProducts.length / itemsPerPage)
-  const startIndex = (currentPage - 1) * itemsPerPage
-  const paginatedProducts = filteredProducts.slice(
-    startIndex,
-    startIndex + itemsPerPage
-  )
+  const paginatedProducts = productsQuery.data?.items ?? []
+  const totalProducts = productsQuery.data?.total ?? 0
+  const totalPages = Math.ceil(totalProducts / itemsPerPage)
+  const startIndex = offset
 
   const toggleSection = (section: keyof typeof openSections) => {
     setOpenSections((prev) => ({ ...prev, [section]: !prev[section] }))
@@ -123,6 +116,7 @@ export default function CategoryPage() {
     setSelectedBrands((prev) =>
       prev.includes(brand) ? prev.filter((b) => b !== brand) : [...prev, brand]
     )
+    setCurrentPage(1)
   }
 
   const clearAllFilters = () => {
@@ -133,6 +127,7 @@ export default function CategoryPage() {
     setConditions([])
     setPaymentOptions([])
     setMinRating('all')
+    setCurrentPage(1)
   }
 
   const appliedFiltersCount =
@@ -164,8 +159,8 @@ export default function CategoryPage() {
             </h1>
             <p className="text-[13px] text-solo-muted mt-1">
               Showing {startIndex + 1}–
-              {Math.min(startIndex + itemsPerPage, filteredProducts.length)} of{' '}
-              {filteredProducts.length} products
+              {Math.min(startIndex + paginatedProducts.length, totalProducts)} of{' '}
+              {totalProducts} products
             </p>
           </div>
 
@@ -223,7 +218,10 @@ export default function CategoryPage() {
                           type="number"
                           placeholder="₦ Min"
                           value={minPrice}
-                          onChange={(e) => setMinPrice(e.target.value)}
+                          onChange={(e) => {
+                            setMinPrice(e.target.value)
+                            setCurrentPage(1)
+                          }}
                           className="w-full h-9 px-3 text-[13px] border border-gray-200 rounded-btn focus:outline-none focus:border-solo-green"
                         />
                       </div>
@@ -232,7 +230,10 @@ export default function CategoryPage() {
                           type="number"
                           placeholder="₦ Max"
                           value={maxPrice}
-                          onChange={(e) => setMaxPrice(e.target.value)}
+                          onChange={(e) => {
+                            setMaxPrice(e.target.value)
+                            setCurrentPage(1)
+                          }}
                           className="w-full h-9 px-3 text-[13px] border border-gray-200 rounded-btn focus:outline-none focus:border-solo-green"
                         />
                       </div>
@@ -298,7 +299,10 @@ export default function CategoryPage() {
                         type="radio"
                         name="availability"
                         checked={availability === 'in-stock'}
-                        onChange={() => setAvailability('in-stock')}
+                        onChange={() => {
+                          setAvailability('in-stock')
+                          setCurrentPage(1)
+                        }}
                         className="w-4 h-4 accent-solo-green"
                       />
                       <span className="text-[14px] text-solo-body-text">
@@ -310,7 +314,10 @@ export default function CategoryPage() {
                         type="radio"
                         name="availability"
                         checked={availability === 'all'}
-                        onChange={() => setAvailability('all')}
+                        onChange={() => {
+                          setAvailability('all')
+                          setCurrentPage(1)
+                        }}
                         className="w-4 h-4 accent-solo-green"
                       />
                       <span className="text-[14px] text-solo-body-text">All</span>
@@ -320,6 +327,7 @@ export default function CategoryPage() {
               </div>
 
               {/* Payment Options */}
+              {/* TODO: no API for Payment Options filter yet */}
               <div className="border-t border-gray-100 pt-4">
                 <button
                   onClick={() => toggleSection('payment')}
@@ -379,7 +387,10 @@ export default function CategoryPage() {
                         type="radio"
                         name="rating"
                         checked={minRating === '4'}
-                        onChange={() => setMinRating('4')}
+                        onChange={() => {
+                          setMinRating('4')
+                          setCurrentPage(1)
+                        }}
                         className="w-4 h-4 accent-solo-green"
                       />
                       <span className="text-[14px] text-solo-body-text">
@@ -391,7 +402,10 @@ export default function CategoryPage() {
                         type="radio"
                         name="rating"
                         checked={minRating === '3'}
-                        onChange={() => setMinRating('3')}
+                        onChange={() => {
+                          setMinRating('3')
+                          setCurrentPage(1)
+                        }}
                         className="w-4 h-4 accent-solo-green"
                       />
                       <span className="text-[14px] text-solo-body-text">
@@ -403,7 +417,10 @@ export default function CategoryPage() {
                         type="radio"
                         name="rating"
                         checked={minRating === 'all'}
-                        onChange={() => setMinRating('all')}
+                        onChange={() => {
+                          setMinRating('all')
+                          setCurrentPage(1)
+                        }}
                         className="w-4 h-4 accent-solo-green"
                       />
                       <span className="text-[14px] text-solo-body-text">All</span>
@@ -423,7 +440,10 @@ export default function CategoryPage() {
               </span>
               <select
                 value={sortBy}
-                onChange={(e) => setSortBy(e.target.value)}
+                onChange={(e) => {
+                  setSortBy(e.target.value)
+                  setCurrentPage(1)
+                }}
                 className="bg-transparent text-[14px] font-medium text-solo-navy focus:outline-none cursor-pointer"
               >
                 {sortOptions.map((option) => (
@@ -539,14 +559,20 @@ export default function CategoryPage() {
                     type="number"
                     placeholder="₦ Min"
                     value={minPrice}
-                    onChange={(e) => setMinPrice(e.target.value)}
+                    onChange={(e) => {
+                      setMinPrice(e.target.value)
+                      setCurrentPage(1)
+                    }}
                     className="flex-1 h-10 px-3 text-[14px] border border-gray-200 rounded-btn focus:outline-none focus:border-solo-green"
                   />
                   <input
                     type="number"
                     placeholder="₦ Max"
                     value={maxPrice}
-                    onChange={(e) => setMaxPrice(e.target.value)}
+                    onChange={(e) => {
+                      setMaxPrice(e.target.value)
+                      setCurrentPage(1)
+                    }}
                     className="flex-1 h-10 px-3 text-[14px] border border-gray-200 rounded-btn focus:outline-none focus:border-solo-green"
                   />
                 </div>
@@ -573,6 +599,7 @@ export default function CategoryPage() {
               </div>
 
               {/* BNPL */}
+              {/* TODO: no API for Payment Options filter yet */}
               <div className="pb-4 border-t border-gray-100 pt-4">
                 <label className="flex items-center gap-2 cursor-pointer">
                   <input

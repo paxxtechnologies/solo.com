@@ -2,8 +2,10 @@
 
 import { useState, useEffect, useRef } from 'react'
 import Link from 'next/link'
+import { useQuery } from '@tanstack/react-query'
 import { ProductCard } from '@/components/product/ProductCard'
 import { flashDeals } from '@/lib/mock-data'
+import { publicProductsService } from '@/services/products.service'
 import { ChevronLeft, ChevronRight } from 'lucide-react'
 
 function formatTime(ms: number) {
@@ -22,8 +24,13 @@ function formatTime(ms: number) {
 export function FlashDealsSection() {
   const [timeRemaining, setTimeRemaining] = useState<number | null>(null)
   const scrollContainerRef = useRef<HTMLDivElement>(null)
+  const flashDealsQuery = useQuery({
+    queryKey: ['home-flash-deals-active'],
+    queryFn: () => publicProductsService.activeFlashDeals({ Limit: 8, Offset: 0 }),
+  })
 
   useEffect(() => {
+    // TODO: no API for flash-deal countdown timer yet
     // Get end time from first flash deal
     const endTime = new Date(flashDeals[0]?.endTime || Date.now()).getTime()
 
@@ -101,12 +108,12 @@ export function FlashDealsSection() {
             ref={scrollContainerRef}
             className="flex gap-4 overflow-x-auto snap-x snap-mandatory pb-4 hide-scrollbar"
           >
-            {flashDeals.map((deal) => (
+            {(flashDealsQuery.data?.items ?? []).map((product) => (
               <div
-                key={deal.id}
+                key={product.id}
                 className="flex-shrink-0 w-[280px] max-md:w-[240px] snap-start"
               >
-                <ProductCard product={deal.product} />
+                <ProductCard product={product} />
               </div>
             ))}
           </div>

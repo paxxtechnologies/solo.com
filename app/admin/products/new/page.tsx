@@ -1,11 +1,17 @@
 "use client";
 
-import { useState } from "react";
+import { ChangeEvent, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
+import { useQuery } from "@tanstack/react-query";
 import { ChevronLeft, Upload, X, Plus, GripVertical, Save } from "lucide-react";
+import { adminProductsService } from "@/services/admin-products.service";
+import type {
+  AdminProductVariantInput,
+  CreateAdminProductPayload,
+} from "@/types/product.types";
 
-const categories = [
+const demoCategories = [
   "Smartphones",
   "Laptops",
   "Accessories",
@@ -28,12 +34,14 @@ interface VariantGroup {
 export default function NewProductPage() {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
+  const [submitError, setSubmitError] = useState<string | null>(null);
   
   // Basic Info
   const [name, setName] = useState("");
   const [slug, setSlug] = useState("");
   const [category, setCategory] = useState("");
   const [brand, setBrand] = useState("");
+  const [model, setModel] = useState("");
   const [description, setDescription] = useState("");
   const [tags, setTags] = useState("");
   
@@ -45,7 +53,7 @@ export default function NewProductPage() {
   const [seoDescription, setSeoDescription] = useState("");
   
   // Images
-  const [images, setImages] = useState<string[]>([]);
+  const [images, setImages] = useState<{ file: File; previewUrl: string }[]>([]);
   
   // Pricing
   const [price, setPrice] = useState("");
@@ -60,6 +68,9 @@ export default function NewProductPage() {
   // Variants
   const [hasVariants, setHasVariants] = useState(false);
   const [variantGroups, setVariantGroups] = useState<VariantGroup[]>([]);
+  const [quickVariants, setQuickVariants] = useState<AdminProductVariantInput[]>([
+    { color: "", storage: "", stockQty: 0, priceModifier: 0 },
+  ]);
   
   // Badges & Settings
   const [soloVerified, setSoloVerified] = useState(true);
@@ -69,6 +80,21 @@ export default function NewProductPage() {
   const [flashDiscount, setFlashDiscount] = useState("");
   const [flashStart, setFlashStart] = useState("");
   const [flashEnd, setFlashEnd] = useState("");
+
+  const categoriesQuery = useQuery({
+    queryKey: ["admin-categories"],
+    queryFn: () => adminProductsService.listCategories().then((res) => res.data.data.items),
+  });
+
+  const categoryOptions =
+    categoriesQuery.data?.map((item) => ({ value: item.id, label: item.name })) ??
+    demoCategories.map((item) => ({ value: item, label: item }));
+
+  useEffect(() => {
+    return () => {
+      images.forEach((image) => URL.revokeObjectURL(image.previewUrl));
+    };
+  }, [images]);
 
   // Auto-generate slug from name
   const handleNameChange = (value: string) => {
@@ -90,22 +116,129 @@ export default function NewProductPage() {
     setVariantGroups([...variantGroups, { name: "", values: [] }]);
   };
 
-  const handleImageUpload = () => {
-    // Simulate image upload
-    const mockUrl = `https://images.unsplash.com/photo-${Date.now()}?w=400`;
-    setImages([...images, mockUrl]);
+  const addQuickVariant = () => {
+    setQuickVariants((current) => [...current, { color: "", storage: "", stockQty: 0, priceModifier: 0 }]);
+  };
+
+  const updateQuickVariant = (
+    index: number,
+    field: keyof AdminProductVariantInput,
+    value: string | number | undefined
+  ) => {
+    setQuickVariants((current) =>
+      current.map((variant, variantIndex) => {
+        if (variantIndex !== index) {
+          return variant;
+        }
+
+        if (field === "stockQty" || field === "priceModifier") {
+          return { ...variant, [field]: Number(value) || 0 };
+        }
+
+        return { ...variant, [field]: value };
+      })
+    );
+  };
+
+  const handleImageUpload = (event: ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(event.target.files ?? []);
+    if (files.length === 0) {
+      return;
+    }
+
+    setImages((currentImages) => [
+      ...currentImages,
+      ...files.map((file) => ({
+        file,
+        previewUrl: URL.createObjectURL(file),
+      })),
+    ]);
+    event.target.value = "";
   };
 
   const removeImage = (index: number) => {
+    URL.revokeObjectURL(images[index].previewUrl);
     setImages(images.filter((_, i) => i !== index));
   };
 
   const handleSave = async (publish: boolean) => {
+    setSubmitError(null);
     setLoading(true);
-    // Simulate API call
-    setTimeout(() => {
+
+    const basePrice = Number(price);
+    const quantity = Number(stockQty);
+
+    if (!name || !category || !Number.isFinite(basePrice) || !Number.isFinite(quantity)) {
+      setSubmitError("Product name, category, price, and stock quantity are required.");
+      setLoading(false);
+      return;
+    }
+
+    const generatedVariants: AdminProductVariantInput[] = quickVariants
+      .filter((variant) => variant.color || variant.storage || variant.stockQty || variant.priceModifier)
+      .map((variant, index) => ({
+        sku:
+          variant.sku?.trim() ||
+          [variant.color, variant.storage]
+            .filter(Boolean)
+            .join("-")
+            .toLowerCase()
+            .replace(/[^a-z0-9]+/g, "-")
+            .replace(/(^-|-$)/g, "") ||
+          `${slug || name}-${index + 1}`,
+        color: variant.color || undefined,
+        storage: variant.storage || undefined,
+        priceModifier: Number(variant.priceModifier) || 0,
+        stockQty: Number(variant.stockQty) || 0,
+      }));
+
+    const variants: AdminProductVariantInput[] = hasVariants
+      ? [
+          ...generatedVariants,
+          ...variantGroups.flatMap((group) =>
+            group.values
+              .filter((option) => option.value)
+              .map((option) => ({
+                sku: `${slug || name}-${group.name}-${option.value}`
+                  .toLowerCase()
+                  .replace(/[^a-z0-9]+/g, "-")
+                  .replace(/(^-|-$)/g, ""),
+                color: group.name.toLowerCase() === "color" ? option.value : "",
+                storage: group.name.toLowerCase() === "storage" ? option.value : "",
+                priceModifier: option.priceOverride ? Number(option.priceOverride) - basePrice : 0,
+                stockQty: Number(option.stock) || 0,
+              }))
+          ),
+        ]
+      : generatedVariants;
+
+    const payload: CreateAdminProductPayload = {
+      slug: slug || undefined,
+      name,
+      description: description || undefined,
+      brand: brand || undefined,
+      model: model || undefined,
+      categoryId: category,
+      basePrice,
+      stockQty: quantity,
+      isActive: publish,
+      images: images.map((image) => image.file),
+      variants,
+      specifications: specs
+        .filter((spec) => spec.key && spec.value)
+        .map((spec) => ({ specKey: spec.key, specValue: spec.value })),
+    };
+
+    try {
+      await adminProductsService.create(payload);
       router.push("/admin/products");
-    }, 1000);
+    } catch (error) {
+      setSubmitError(
+        error instanceof Error ? error.message : "Unable to save product."
+      );
+    } finally {
+      setLoading(false);
+    }
   };
 
   const discountPercent = price && salePrice 
@@ -132,7 +265,7 @@ export default function NewProductPage() {
               disabled={loading}
               className="px-4 py-2 border border-border text-foreground font-medium rounded-btn hover:bg-surface-alt transition-colors disabled:opacity-50"
             >
-              Save as Draft
+              {loading ? "Saving..." : "Save as Draft"}
             </button>
             <button
               onClick={() => handleSave(true)}
@@ -140,14 +273,17 @@ export default function NewProductPage() {
               className="flex items-center gap-2 px-4 py-2 bg-primary text-white font-medium rounded-btn hover:bg-primary-hover transition-colors disabled:opacity-50"
             >
               <Save className="w-4 h-4" />
-              Publish
+              {loading ? "Saving..." : "Publish"}
             </button>
           </div>
         </div>
+        {submitError && (
+          <p className="mt-3 text-sm text-error">{submitError}</p>
+        )}
       </div>
 
       {/* Form */}
-      <div className="max-w-[1400px] mx-auto px-6 py-8">
+      <div className="max-w-7xl mx-auto px-6 py-8">
         <div className="grid lg:grid-cols-5 gap-8">
           {/* Left Column - 60% */}
           <div className="lg:col-span-3 space-y-6">
@@ -188,10 +324,11 @@ export default function NewProductPage() {
                       value={category}
                       onChange={(e) => setCategory(e.target.value)}
                       className="w-full px-4 py-3 rounded-lg border border-border bg-surface-alt text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
+                      aria-label="Select category"
                     >
                       <option value="">Select category</option>
-                      {categories.map((cat) => (
-                        <option key={cat} value={cat}>{cat}</option>
+                      {categoryOptions.map((cat) => (
+                        <option key={cat.value} value={cat.value}>{cat.label}</option>
                       ))}
                     </select>
                   </div>
@@ -207,6 +344,18 @@ export default function NewProductPage() {
                       className="w-full px-4 py-3 rounded-lg border border-border bg-surface-alt text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
                     />
                   </div>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-foreground mb-2">
+                    Model
+                  </label>
+                  <input
+                    type="text"
+                    value={model}
+                    onChange={(e) => setModel(e.target.value)}
+                    placeholder="e.g., A3102"
+                    className="w-full px-4 py-3 rounded-lg border border-border bg-surface-alt text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
+                  />
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-foreground mb-2">
@@ -246,6 +395,7 @@ export default function NewProductPage() {
                     <button
                       onClick={() => removeSpec(index)}
                       className="p-2 text-muted hover:text-destructive"
+                      aria-label={`Remove specification ${index + 1}`}
                     >
                       <X className="w-5 h-5" />
                     </button>
@@ -309,19 +459,25 @@ export default function NewProductPage() {
             {/* Images */}
             <div className="bg-white rounded-card p-6 border border-border">
               <h2 className="font-semibold text-foreground mb-4">Images</h2>
-              <div
-                onClick={handleImageUpload}
+              <label
                 className="border-2 border-dashed border-border rounded-lg p-8 text-center cursor-pointer hover:border-primary transition-colors"
               >
                 <Upload className="w-8 h-8 text-muted mx-auto mb-2" />
                 <p className="text-muted text-sm">Drag images here or click to upload</p>
-              </div>
+                <input
+                  type="file"
+                  accept="image/*"
+                  multiple
+                  onChange={handleImageUpload}
+                  className="sr-only"
+                />
+              </label>
               {images.length > 0 && (
                 <div className="mt-4 grid grid-cols-3 gap-3">
                   {images.map((img, index) => (
                     <div key={index} className="relative group">
                       <img
-                        src={img}
+                        src={img.previewUrl}
                         alt={`Product ${index + 1}`}
                         className="w-full aspect-square object-cover rounded-lg"
                       />
@@ -330,6 +486,7 @@ export default function NewProductPage() {
                         <button
                           onClick={() => removeImage(index)}
                           className="p-1 bg-destructive text-white rounded"
+                          aria-label={`Remove image ${index + 1}`}
                         >
                           <X className="w-4 h-4" />
                         </button>
@@ -343,6 +500,71 @@ export default function NewProductPage() {
                   ))}
                 </div>
               )}
+            </div>
+
+            {/* Variants */}
+            <div className="bg-white rounded-card p-6 border border-border">
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="font-semibold text-foreground">Quick Variants</h2>
+                <button
+                  type="button"
+                  onClick={addQuickVariant}
+                  className="text-sm font-medium text-primary hover:underline"
+                >
+                  + Add variant
+                </button>
+              </div>
+              <div className="space-y-3">
+                {quickVariants.map((variant, index) => (
+                  <div key={`${variant.color}-${variant.storage}-${index}`} className="grid gap-3 md:grid-cols-5">
+                    <input
+                      type="text"
+                      value={variant.sku ?? ""}
+                      onChange={(e) => updateQuickVariant(index, "sku", e.target.value)}
+                      placeholder="SKU (optional)"
+                      className="px-4 py-2 rounded-lg border border-border bg-surface-alt text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
+                    />
+                    <input
+                      type="text"
+                      value={variant.color ?? ""}
+                      onChange={(e) => updateQuickVariant(index, "color", e.target.value)}
+                      placeholder="Color"
+                      className="px-4 py-2 rounded-lg border border-border bg-surface-alt text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
+                      aria-label={`Variant color ${index + 1}`}
+                    />
+                    <input
+                      type="text"
+                      value={variant.storage ?? ""}
+                      onChange={(e) => updateQuickVariant(index, "storage", e.target.value)}
+                      placeholder="Storage"
+                      className="px-4 py-2 rounded-lg border border-border bg-surface-alt text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
+                      aria-label={`Variant storage ${index + 1}`}
+                    />
+                    <label className="block text-sm font-medium text-foreground mb-2">
+                      Price Modifier
+                    </label>
+                    <input
+                      type="number"
+                      value={variant.priceModifier ?? 0}
+                      onChange={(e) => updateQuickVariant(index, "priceModifier", e.target.value)}
+                      placeholder="Price modifier"
+                      className="px-4 py-2 rounded-lg border border-border bg-surface-alt text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
+                      aria-label={`Variant price modifier ${index + 1}`}
+                    />
+                    <label className="block text-sm font-medium text-foreground mb-2">
+                      Stock
+                    </label>
+                    <input
+                      type="number"
+                      value={variant.stockQty ?? 0}
+                      onChange={(e) => updateQuickVariant(index, "stockQty", e.target.value)}
+                      placeholder="Stock"
+                      className="px-4 py-2 rounded-lg border border-border bg-surface-alt text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
+                      aria-label={`Variant stock ${index + 1}`}
+                    />
+                  </div>
+                ))}
+              </div>
             </div>
 
             {/* Pricing */}
@@ -482,6 +704,7 @@ export default function NewProductPage() {
                         value={flashDiscount}
                         onChange={(e) => setFlashDiscount(e.target.value)}
                         className="w-full px-3 py-2 rounded border border-border bg-white text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
+                        aria-label="Flash deal discount"
                       />
                     </div>
                     <div>
@@ -493,6 +716,7 @@ export default function NewProductPage() {
                         value={flashStart}
                         onChange={(e) => setFlashStart(e.target.value)}
                         className="w-full px-3 py-2 rounded border border-border bg-white text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
+                        aria-label="Flash deal start date"
                       />
                     </div>
                     <div>
@@ -504,6 +728,7 @@ export default function NewProductPage() {
                         value={flashEnd}
                         onChange={(e) => setFlashEnd(e.target.value)}
                         className="w-full px-3 py-2 rounded border border-border bg-white text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
+                        aria-label="Flash deal end date"
                       />
                     </div>
                   </div>

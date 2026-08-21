@@ -1,22 +1,84 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 import Link from "next/link";
-import { SoloLogo } from "@/components/ui/SoloLogo";
-import { CheckCircle, Package, Truck, Home, ShoppingBag } from "lucide-react";
+import { useSearchParams } from "next/navigation";
 import confetti from "canvas-confetti";
+import { CheckCircle, Clock, Home, ShoppingBag, XCircle } from "lucide-react";
+import { SoloLogo } from "@/components/ui/SoloLogo";
+import { useCart } from "@/context/cart-context";
+import { checkoutService } from "@/services/checkout.service";
+import type { PaymentData } from "@/types/checkout.types";
 
-export default function CheckoutSuccessPage() {
-  const [orderNumber] = useState(() =>
-    `SG${Date.now().toString(36).toUpperCase()}${Math.random()
-      .toString(36)
-      .substring(2, 6)
-      .toUpperCase()}`
-  );
+type VerificationState = "checking" | "success" | "failed";
+
+function CheckoutSuccessContent() {
+  const searchParams = useSearchParams();
+  const { clearCart } = useCart();
+  const [status, setStatus] = useState<VerificationState>("checking");
+  const [payment, setPayment] = useState<PaymentData | null>(null);
+  const [message, setMessage] = useState("Verifying your payment...");
 
   useEffect(() => {
-    // Trigger confetti on mount
-    const duration = 3 * 1000;
+    const reference =
+      searchParams.get("reference") ||
+      searchParams.get("trxref") ||
+      searchParams.get("transactionRef");
+
+    if (!reference) {
+      setStatus("failed");
+      setMessage("No payment reference was found in the callback URL.");
+      return;
+    }
+
+    let cancelled = false;
+
+    const verify = async () => {
+      for (let attempt = 0; attempt < 3; attempt += 1) {
+        try {
+          const response = await checkoutService.verifyPayment(reference);
+          const paymentData = response.data.data;
+
+          if (cancelled) return;
+
+          setPayment(paymentData);
+
+          if (paymentData.status === "success") {
+            clearCart();
+            setStatus("success");
+            setMessage(paymentData.message || "Payment completed successfully.");
+            return;
+          }
+
+          if (paymentData.status === "pending" && attempt < 2) {
+            setMessage("Payment is still pending. Checking again...");
+            await new Promise((resolve) => setTimeout(resolve, 1500));
+            continue;
+          }
+
+          setStatus("failed");
+          setMessage(paymentData.message || `Payment ${paymentData.status}.`);
+          return;
+        } catch (error) {
+          if (cancelled) return;
+          setStatus("failed");
+          setMessage(error instanceof Error ? error.message : "Payment verification failed.");
+          return;
+        }
+      }
+    };
+
+    verify();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [clearCart, searchParams]);
+
+  useEffect(() => {
+    if (status !== "success") return;
+
+    const duration = 3000;
     const animationEnd = Date.now() + duration;
     const defaults = { startVelocity: 30, spread: 360, ticks: 60, zIndex: 0 };
 
@@ -24,11 +86,12 @@ export default function CheckoutSuccessPage() {
       return Math.random() * (max - min) + min;
     }
 
-    const interval = setInterval(function () {
+    const interval = setInterval(() => {
       const timeLeft = animationEnd - Date.now();
 
       if (timeLeft <= 0) {
-        return clearInterval(interval);
+        clearInterval(interval);
+        return;
       }
 
       const particleCount = 50 * (timeLeft / duration);
@@ -48,11 +111,89 @@ export default function CheckoutSuccessPage() {
     }, 250);
 
     return () => clearInterval(interval);
-  }, []);
+  }, [status]);
+
+  const Icon =
+    status === "success" ? CheckCircle : status === "checking" ? Clock : XCircle;
 
   return (
+    <main className="flex-1 flex items-center justify-center px-4 py-12">
+      <div className="max-w-lg w-full text-center">
+        <div className="relative inline-flex mb-6">
+          <div
+            className={`w-24 h-24 rounded-full flex items-center justify-center ${
+              status === "success"
+                ? "bg-success/10"
+                : status === "checking"
+                ? "bg-primary/10"
+                : "bg-red-50"
+            }`}
+          >
+            <Icon
+              className={`w-12 h-12 ${
+                status === "success"
+                  ? "text-success"
+                  : status === "checking"
+                  ? "text-primary animate-pulse"
+                  : "text-red-600"
+              }`}
+            />
+          </div>
+        </div>
+
+        <h1 className="text-3xl font-heading font-bold text-foreground mb-2">
+          {status === "success"
+            ? "Payment Confirmed"
+            : status === "checking"
+            ? "Checking Payment"
+            : "Payment Not Confirmed"}
+        </h1>
+        <p className="text-lg text-muted mb-6">{message}</p>
+
+        {payment && (
+          <div className="bg-surface-alt rounded-xl p-6 mb-8">
+            <p className="text-sm text-muted mb-1">Transaction Reference</p>
+            <p className="text-lg font-mono font-bold text-primary break-all">
+              {payment.transactionRef}
+            </p>
+          </div>
+        )}
+
+        {status === "success" && (
+          <div className="bg-surface rounded-xl border border-border p-6 mb-8">
+            <h2 className="font-heading font-semibold text-foreground mb-2">
+              What happens next?
+            </h2>
+            <p className="text-sm text-muted">
+              We have received your payment and will prepare your order for pickup.
+            </p>
+          </div>
+        )}
+
+        <div className="flex flex-col sm:flex-row gap-4 justify-center">
+          <Link
+            href="/"
+            className="inline-flex items-center justify-center gap-2 px-6 py-3 bg-primary text-white font-semibold rounded-lg hover:bg-primary/90 transition-colors"
+          >
+            <Home className="w-5 h-5" />
+            Home
+          </Link>
+          <Link
+            href="/shop"
+            className="inline-flex items-center justify-center gap-2 px-6 py-3 bg-surface border border-border text-foreground font-semibold rounded-lg hover:bg-surface-alt transition-colors"
+          >
+            <ShoppingBag className="w-5 h-5" />
+            Continue Shopping
+          </Link>
+        </div>
+      </div>
+    </main>
+  );
+}
+
+export default function CheckoutSuccessPage() {
+  return (
     <div className="min-h-screen bg-background flex flex-col">
-      {/* Header */}
       <header className="border-b border-border bg-surface">
         <div className="max-w-7xl mx-auto px-4 py-4 flex items-center justify-center">
           <Link href="/" className="flex items-center gap-2">
@@ -64,112 +205,10 @@ export default function CheckoutSuccessPage() {
         </div>
       </header>
 
-      {/* Main Content */}
-      <main className="flex-1 flex items-center justify-center px-4 py-12">
-        <div className="max-w-lg w-full text-center">
-          {/* Success Icon */}
-          <div className="relative inline-flex mb-6">
-            <div className="w-24 h-24 bg-success/10 rounded-full flex items-center justify-center">
-              <CheckCircle className="w-12 h-12 text-success" />
-            </div>
-            <div className="absolute -top-1 -right-1 w-8 h-8 bg-primary rounded-full flex items-center justify-center animate-bounce">
-              <Package className="w-4 h-4 text-white" />
-            </div>
-          </div>
+      <Suspense fallback={null}>
+        <CheckoutSuccessContent />
+      </Suspense>
 
-          {/* Success Message */}
-          <h1 className="text-3xl font-heading font-bold text-foreground mb-2">
-            Order Confirmed!
-          </h1>
-          <p className="text-lg text-muted mb-6">
-            Thank you for shopping with Solo Gadgets
-          </p>
-
-          {/* Order Number */}
-          <div className="bg-surface-alt rounded-xl p-6 mb-8">
-            <p className="text-sm text-muted mb-1">Order Number</p>
-            <p className="text-2xl font-mono font-bold text-primary tracking-wider">
-              {orderNumber}
-            </p>
-          </div>
-
-          {/* Order Timeline */}
-          <div className="bg-surface rounded-xl border border-border p-6 mb-8">
-            <h2 className="font-heading font-semibold text-foreground mb-4">
-              What happens next?
-            </h2>
-            <div className="space-y-4">
-              <div className="flex items-start gap-4">
-                <div className="w-8 h-8 bg-success/10 rounded-full flex items-center justify-center flex-shrink-0">
-                  <CheckCircle className="w-4 h-4 text-success" />
-                </div>
-                <div className="text-left">
-                  <p className="font-medium text-foreground">Order Placed</p>
-                  <p className="text-sm text-muted">
-                    We&apos;ve received your order and payment
-                  </p>
-                </div>
-              </div>
-              <div className="flex items-start gap-4">
-                <div className="w-8 h-8 bg-primary/10 rounded-full flex items-center justify-center flex-shrink-0">
-                  <Package className="w-4 h-4 text-primary" />
-                </div>
-                <div className="text-left">
-                  <p className="font-medium text-foreground">Processing</p>
-                  <p className="text-sm text-muted">
-                    Your order is being prepared for shipment
-                  </p>
-                </div>
-              </div>
-              <div className="flex items-start gap-4">
-                <div className="w-8 h-8 bg-muted/20 rounded-full flex items-center justify-center flex-shrink-0">
-                  <Truck className="w-4 h-4 text-muted" />
-                </div>
-                <div className="text-left">
-                  <p className="font-medium text-muted">Out for Delivery</p>
-                  <p className="text-sm text-muted">
-                    You&apos;ll receive tracking details via email
-                  </p>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* Email Notice */}
-          <p className="text-sm text-muted mb-8">
-            A confirmation email has been sent to your email address with order
-            details and tracking information.
-          </p>
-
-          {/* Action Buttons */}
-          <div className="flex flex-col sm:flex-row gap-4 justify-center">
-            <Link
-              href="/account/orders"
-              className="inline-flex items-center justify-center gap-2 px-6 py-3 bg-primary text-white font-semibold rounded-lg hover:bg-primary/90 transition-colors"
-            >
-              <Package className="w-5 h-5" />
-              Track Order
-            </Link>
-            <Link
-              href="/"
-              className="inline-flex items-center justify-center gap-2 px-6 py-3 bg-surface border border-border text-foreground font-semibold rounded-lg hover:bg-surface-alt transition-colors"
-            >
-              <ShoppingBag className="w-5 h-5" />
-              Continue Shopping
-            </Link>
-          </div>
-
-          {/* Support Link */}
-          <p className="mt-8 text-sm text-muted">
-            Need help?{" "}
-            <Link href="/contact" className="text-primary hover:underline">
-              Contact our support team
-            </Link>
-          </p>
-        </div>
-      </main>
-
-      {/* Footer */}
       <footer className="border-t border-border py-6">
         <div className="max-w-7xl mx-auto px-4 text-center text-sm text-muted">
           <p>&copy; {new Date().getFullYear()} Solo Gadgets. All rights reserved.</p>

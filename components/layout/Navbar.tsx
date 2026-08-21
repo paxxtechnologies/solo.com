@@ -20,7 +20,8 @@ import {
   Grid3X3,
   UserCircle,
 } from 'lucide-react'
-import { products } from '@/lib/mock-data'
+import type { Product } from '@/lib/mock-data'
+import { publicProductsService } from '@/services/products.service'
 import Image from 'next/image'
 
 const navLinks = [
@@ -42,7 +43,7 @@ export function Navbar() {
   const { mutate: logoutUser } = useLogout();
 
   const [searchQuery, setSearchQuery] = useState('')
-  const [searchResults, setSearchResults] = useState<typeof products>([])
+  const [searchResults, setSearchResults] = useState<Product[]>([])
   const [isSearchOpen, setIsSearchOpen] = useState(false)
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false)
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false)
@@ -52,23 +53,28 @@ export function Navbar() {
 
   // Handle search
   useEffect(() => {
-    if (searchQuery.length < 2) {
+    const query = searchQuery.trim()
+
+    if (!query) {
       setSearchResults([])
       setIsSearchOpen(false)
       return
     }
 
-    // Mock search - in production this would be an API call
-    const filtered = products
-      .filter(
-        (p) =>
-          p.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-          p.brand.toLowerCase().includes(searchQuery.toLowerCase())
-      )
-      .slice(0, 6)
+    const timeoutId = window.setTimeout(() => {
+      publicProductsService
+        .search(query, { Limit: 5, Offset: 0 })
+        .then((results) => {
+          setSearchResults(results.items)
+          setIsSearchOpen(results.items.length > 0)
+        })
+        .catch(() => {
+          setSearchResults([])
+          setIsSearchOpen(false)
+        })
+    }, 300)
 
-    setSearchResults(filtered)
-    setIsSearchOpen(filtered.length > 0)
+    return () => window.clearTimeout(timeoutId)
   }, [searchQuery])
 
   // Close dropdowns on click outside
@@ -117,6 +123,7 @@ export function Navbar() {
                 <input
                   suppressHydrationWarning
                   type="text"
+                  autoComplete="off"
                   placeholder="Search for gadgets..."
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
@@ -304,6 +311,7 @@ export function Navbar() {
             <input
               suppressHydrationWarning
               type="text"
+              autoComplete="off"
               placeholder="Search for gadgets..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}

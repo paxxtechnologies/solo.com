@@ -3,11 +3,12 @@
 import { useState, useEffect } from 'react'
 import { useParams } from 'next/navigation'
 import Link from 'next/link'
+import { useQuery } from '@tanstack/react-query'
 import { ProductImageGallery } from '@/components/product/ProductImageGallery'
 import { ProductCard } from '@/components/product/ProductCard'
 import { useCart } from '@/context/cart-context'
 import { useToast } from '@/context/toast-context'
-import { products } from '@/lib/mock-data'
+import { publicProductsService } from '@/services/products.service'
 import {
   Minus,
   Plus,
@@ -55,7 +56,16 @@ const tabs = ['Description', 'Specifications', 'Reviews', 'Delivery & Returns']
 export default function ProductDetailPage() {
   const params = useParams()
   const slug = params.slug as string
-  const product = products.find((p) => p.slug === slug)
+  const productQuery = useQuery({
+    queryKey: ['product-detail', slug],
+    queryFn: () => publicProductsService.bySlug(slug),
+  })
+  const relatedProductsQuery = useQuery({
+    queryKey: ['product-related', slug],
+    queryFn: () => publicProductsService.related(slug, 4),
+    enabled: productQuery.isSuccess,
+  })
+  const product = productQuery.data
 
   const { addItem, openCart } = useCart()
   const { showToast } = useToast()
@@ -81,6 +91,10 @@ export default function ProductDetailPage() {
     }
   }, [product])
 
+  if (productQuery.isLoading) {
+    return null
+  }
+
   if (!product) {
     return (
       <div className="max-w-[1280px] mx-auto px-6 py-20 text-center">
@@ -92,7 +106,7 @@ export default function ProductDetailPage() {
     )
   }
 
-  const hasDiscount = product.salePrice && product.salePrice > product.price
+  const hasDiscount = Boolean(product.salePrice && product.salePrice > product.price)
   const discountPercent = hasDiscount
     ? Math.round((1 - product.price / product.salePrice!) * 100)
     : 0
@@ -108,7 +122,15 @@ export default function ProductDetailPage() {
   const handleAddToCart = async () => {
     setIsAdding(true)
     await new Promise((resolve) => setTimeout(resolve, 300))
-    addItem(product, quantity)
+    const selectedOption = product.variants
+      ?.flatMap((variant) =>
+        variant.options
+          .filter((option) => selectedVariants[variant.name] === option.value)
+          .map((option) => ({ id: option.id, name: variant.name, value: option.value }))
+      )
+      .find((option) => option.id)
+
+    addItem(product, quantity, selectedOption)
     showToast('Added to cart', 'success')
     setIsAdding(false)
   }
@@ -116,7 +138,15 @@ export default function ProductDetailPage() {
   const handleBuyNow = async () => {
     setIsAdding(true)
     await new Promise((resolve) => setTimeout(resolve, 300))
-    addItem(product, quantity)
+    const selectedOption = product.variants
+      ?.flatMap((variant) =>
+        variant.options
+          .filter((option) => selectedVariants[variant.name] === option.value)
+          .map((option) => ({ id: option.id, name: variant.name, value: option.value }))
+      )
+      .find((option) => option.id)
+
+    addItem(product, quantity, selectedOption)
     setIsAdding(false)
     openCart()
   }
@@ -133,9 +163,7 @@ export default function ProductDetailPage() {
   }
 
   // Related products
-  const relatedProducts = products
-    .filter((p) => p.category === product.category && p.id !== product.id)
-    .slice(0, 4)
+  const relatedProducts = relatedProductsQuery.data?.items ?? []
 
   return (
     <div className="bg-solo-soft-gray min-h-screen pb-20 md:pb-8">
@@ -156,6 +184,7 @@ export default function ProductDetailPage() {
         {/* Main Content */}
         <div className="grid grid-cols-1 lg:grid-cols-[1fr_0.7fr] gap-8">
           {/* Left - Image Gallery */}
+          {/* TODO: no API for Solo Verified badge yet */}
           <ProductImageGallery
             images={product.images}
             productName={product.name}
@@ -196,6 +225,7 @@ export default function ProductDetailPage() {
               </div>
 
               {/* BNPL Card */}
+              {/* TODO: no API for Tendr BNPL monthly pricing yet */}
               {bnplMonthly > 0 && (
                 <div className="bg-solo-mint border border-solo-mint-bdr rounded-lg p-3 mt-3">
                   <div className="flex items-center gap-2 mb-1">
@@ -475,6 +505,7 @@ export default function ProductDetailPage() {
                     </p>
                   </div>
                 </div>
+                {/* TODO: no API for actual review list/content yet */}
                 <p className="text-solo-muted text-[14px]">
                   Reviews will be loaded from the API.
                 </p>

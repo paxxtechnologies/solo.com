@@ -6,27 +6,38 @@ import type { Product } from '@/lib/mock-data'
 export interface CartItem {
   product: Product
   quantity: number
-  selectedVariant?: { name: string; value: string }
+  selectedVariant?: { id?: string; name: string; value: string }
+}
+
+export interface AppliedPromotion {
+  code: string
+  discountAmount: number
+  finalAmount: number
+  message?: string
 }
 
 interface CartState {
   items: CartItem[]
   isOpen: boolean
+  promotion: AppliedPromotion | null
 }
 
 type CartAction =
-  | { type: 'ADD_ITEM'; payload: { product: Product; quantity?: number; selectedVariant?: { name: string; value: string } } }
+  | { type: 'ADD_ITEM'; payload: { product: Product; quantity?: number; selectedVariant?: { id?: string; name: string; value: string } } }
   | { type: 'REMOVE_ITEM'; payload: { productId: string } }
   | { type: 'UPDATE_QUANTITY'; payload: { productId: string; quantity: number } }
   | { type: 'CLEAR_CART' }
+  | { type: 'SET_PROMOTION'; payload: AppliedPromotion }
+  | { type: 'CLEAR_PROMOTION' }
   | { type: 'TOGGLE_CART' }
   | { type: 'OPEN_CART' }
   | { type: 'CLOSE_CART' }
-  | { type: 'HYDRATE'; payload: CartItem[] }
+  | { type: 'HYDRATE'; payload: { items: CartItem[]; promotion: AppliedPromotion | null } }
 
 const initialState: CartState = {
   items: [],
   isOpen: false,
+  promotion: null,
 }
 
 function cartReducer(state: CartState, action: CartAction): CartState {
@@ -45,12 +56,13 @@ function cartReducer(state: CartState, action: CartAction): CartState {
           ...newItems[existingIndex],
           quantity: newItems[existingIndex].quantity + quantity,
         }
-        return { ...state, items: newItems }
+        return { ...state, items: newItems, promotion: null }
       }
 
       return {
         ...state,
         items: [...state.items, { product, quantity, selectedVariant }],
+        promotion: null,
       }
     }
 
@@ -58,6 +70,7 @@ function cartReducer(state: CartState, action: CartAction): CartState {
       return {
         ...state,
         items: state.items.filter((item) => item.product.id !== action.payload.productId),
+        promotion: null,
       }
     }
 
@@ -70,11 +83,18 @@ function cartReducer(state: CartState, action: CartAction): CartState {
         items: state.items.map((item) =>
           item.product.id === productId ? { ...item, quantity } : item
         ),
+        promotion: null,
       }
     }
 
     case 'CLEAR_CART':
-      return { ...state, items: [] }
+      return { ...state, items: [], promotion: null }
+
+    case 'SET_PROMOTION':
+      return { ...state, promotion: action.payload }
+
+    case 'CLEAR_PROMOTION':
+      return { ...state, promotion: null }
 
     case 'TOGGLE_CART':
       return { ...state, isOpen: !state.isOpen }
@@ -86,7 +106,7 @@ function cartReducer(state: CartState, action: CartAction): CartState {
       return { ...state, isOpen: false }
 
     case 'HYDRATE':
-      return { ...state, items: action.payload }
+      return { ...state, items: action.payload.items, promotion: action.payload.promotion }
 
     default:
       return state
@@ -96,15 +116,20 @@ function cartReducer(state: CartState, action: CartAction): CartState {
 interface CartContextType {
   state: CartState
   items: CartItem[]
-  addItem: (product: Product, quantity?: number, selectedVariant?: { name: string; value: string }) => void
+  addItem: (product: Product, quantity?: number, selectedVariant?: { id?: string; name: string; value: string }) => void
   removeItem: (productId: string) => void
   updateQuantity: (productId: string, quantity: number) => void
   clearCart: () => void
+  setPromotion: (promotion: AppliedPromotion) => void
+  clearPromotion: () => void
   toggleCart: () => void
   openCart: () => void
   closeCart: () => void
   itemCount: number
   subtotal: number
+  discountAmount: number
+  total: number
+  promotion: AppliedPromotion | null
 }
 
 const CartContext = createContext<CartContextType | undefined>(undefined)
@@ -118,7 +143,12 @@ export function CartProvider({ children }: { children: ReactNode }) {
     if (savedCart) {
       try {
         const parsed = JSON.parse(savedCart)
-        dispatch({ type: 'HYDRATE', payload: parsed })
+        dispatch({
+          type: 'HYDRATE',
+          payload: Array.isArray(parsed)
+            ? { items: parsed, promotion: null }
+            : { items: parsed.items ?? [], promotion: parsed.promotion ?? null },
+        })
       } catch {
         console.error('Failed to parse cart from localStorage')
       }
@@ -127,10 +157,13 @@ export function CartProvider({ children }: { children: ReactNode }) {
 
   // Save cart to localStorage on every change
   useEffect(() => {
-    localStorage.setItem('solo_cart', JSON.stringify(state.items))
-  }, [state.items])
+    localStorage.setItem('solo_cart', JSON.stringify({
+      items: state.items,
+      promotion: state.promotion,
+    }))
+  }, [state.items, state.promotion])
 
-  const addItem = (product: Product, quantity = 1, selectedVariant?: { name: string; value: string }) => {
+  const addItem = (product: Product, quantity = 1, selectedVariant?: { id?: string; name: string; value: string }) => {
     dispatch({ type: 'ADD_ITEM', payload: { product, quantity, selectedVariant } })
   }
 
@@ -144,6 +177,14 @@ export function CartProvider({ children }: { children: ReactNode }) {
 
   const clearCart = () => {
     dispatch({ type: 'CLEAR_CART' })
+  }
+
+  const setPromotion = (promotion: AppliedPromotion) => {
+    dispatch({ type: 'SET_PROMOTION', payload: promotion })
+  }
+
+  const clearPromotion = () => {
+    dispatch({ type: 'CLEAR_PROMOTION' })
   }
 
   const toggleCart = () => {
@@ -164,6 +205,8 @@ export function CartProvider({ children }: { children: ReactNode }) {
     const price = item.product.salePrice ? item.product.price : item.product.price
     return total + price * item.quantity
   }, 0)
+  const discountAmount = state.promotion?.discountAmount ?? 0
+  const total = Math.max(subtotal - discountAmount, 0)
 
   return (
     <CartContext.Provider
@@ -174,11 +217,16 @@ export function CartProvider({ children }: { children: ReactNode }) {
         removeItem,
         updateQuantity,
         clearCart,
+        setPromotion,
+        clearPromotion,
         toggleCart,
         openCart,
         closeCart,
         itemCount,
         subtotal,
+        discountAmount,
+        total,
+        promotion: state.promotion,
       }}
     >
       {children}

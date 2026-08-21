@@ -5,12 +5,25 @@ import Image from 'next/image'
 import Link from 'next/link'
 import { X, Minus, Plus, Trash2, ShoppingBag } from 'lucide-react'
 import { useCart } from '@/context/cart-context'
+import { checkoutService } from '@/services/checkout.service'
 
 export function CartDrawer() {
-  const { state, closeCart, removeItem, updateQuantity, subtotal, itemCount } = useCart()
+  const {
+    state,
+    closeCart,
+    removeItem,
+    updateQuantity,
+    subtotal,
+    discountAmount,
+    total,
+    promotion,
+    setPromotion,
+    itemCount,
+  } = useCart()
   const drawerRef = useRef<HTMLDivElement>(null)
-  const [promoCode, setPromoCode] = useState('')
+  const [promoCode, setPromoCode] = useState(promotion?.code ?? '')
   const [promoError, setPromoError] = useState('')
+  const [isApplyingPromo, setIsApplyingPromo] = useState(false)
 
   // Close on escape
   useEffect(() => {
@@ -63,10 +76,41 @@ export function CartDrawer() {
     }
   }, [state.isOpen, closeCart])
 
-  const handleApplyPromo = () => {
-    // Mock promo validation - in production this would be an API call
-    setPromoError('Invalid promo code')
-    setTimeout(() => setPromoError(''), 3000)
+  useEffect(() => {
+    setPromoCode(promotion?.code ?? '')
+  }, [promotion?.code])
+
+  const handleApplyPromo = async () => {
+    const code = promoCode.trim()
+
+    if (!code) {
+      setPromoError('Enter a promo code')
+      return
+    }
+
+    setIsApplyingPromo(true)
+    setPromoError('')
+
+    try {
+      const response = await checkoutService.validatePromotion(code, subtotal)
+      const promotionData = response.data
+
+      if (!promotionData?.isValid) {
+        setPromoError(promotionData?.message ?? response.message ?? 'Promotion not applicable')
+        return
+      }
+
+      setPromotion({
+        code: promotionData.code,
+        discountAmount: promotionData.discountAmount,
+        finalAmount: promotionData.finalAmount,
+        message: promotionData.message,
+      })
+    } catch (error) {
+      setPromoError(error instanceof Error ? error.message : 'Promotion could not be applied')
+    } finally {
+      setIsApplyingPromo(false)
+    }
   }
 
   const bnplMonthly = subtotal >= 25000 ? Math.round(subtotal / 3) : 0
@@ -208,14 +252,18 @@ export function CartDrawer() {
                   type="text"
                   placeholder="Promo code"
                   value={promoCode}
-                  onChange={(e) => setPromoCode(e.target.value)}
+                  onChange={(e) => {
+                    setPromoCode(e.target.value)
+                    setPromoError('')
+                  }}
                   className="flex-1 h-10 px-3 text-[14px] border border-gray-200 rounded-btn focus:outline-none focus:border-solo-green"
                 />
                 <button
                   onClick={handleApplyPromo}
-                  className="px-4 h-10 text-[14px] font-medium text-solo-green border border-solo-green rounded-btn hover:bg-solo-mint transition-colors"
+                  disabled={isApplyingPromo}
+                  className="px-4 h-10 text-[14px] font-medium text-solo-green border border-solo-green rounded-btn hover:bg-solo-mint transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                 >
-                  Apply
+                  {isApplyingPromo ? 'Applying' : 'Apply'}
                 </button>
               </div>
               {promoError && (
@@ -230,9 +278,19 @@ export function CartDrawer() {
                     ₦{subtotal.toLocaleString('en-NG')}
                   </span>
                 </div>
-                <div className="flex justify-between text-[14px]">
-                  <span className="text-solo-muted">Delivery</span>
-                  <span className="text-solo-muted">Calculated at checkout</span>
+                {promotion && discountAmount > 0 && (
+                  <div className="flex justify-between text-[14px]">
+                    <span className="text-solo-muted">Discount ({promotion.code})</span>
+                    <span className="font-semibold text-solo-green">
+                      -â‚¦{discountAmount.toLocaleString('en-NG')}
+                    </span>
+                  </div>
+                )}
+                <div className="flex justify-between text-[15px] pt-2 border-t border-gray-100">
+                  <span className="font-semibold text-solo-navy">Total</span>
+                  <span className="font-bold text-solo-navy">
+                    â‚¦{total.toLocaleString('en-NG')}
+                  </span>
                 </div>
               </div>
 
